@@ -95,8 +95,6 @@ export const useMantraEngine = () => {
         setCount(prev => {
             const newCount = prev + 1;
 
-            if (newCount === 1) SpatialAudio.startAmbience();
-
             if (newCount % roundLength === 0) {
                 triggerMalaCompletion();
                 SpatialAudio.playBell('deep');
@@ -108,10 +106,6 @@ export const useMantraEngine = () => {
                 });
 
                 return 0;
-            } else if (newCount % 27 === 0) {
-                SpatialAudio.playBell('medium');
-                triggerHapticFeedback('medium');
-                return newCount;
             } else {
                 triggerHapticFeedback('soft');
                 return newCount;

@@ -18,15 +18,15 @@ interface MalaHelixProps {
 }
 
 const BEAD_COUNT = 108;
-const BEAD_STEP = (Math.PI * 2) / BEAD_COUNT; // Angular step for 1 bead
+const SAMPLES = 1080; // High-res lookup table for instantaneous O(1) curve evaluation
 
-// Authentic tall draped mala proportions
+// Authentic vertical draped mala dimensions (fixed in space, never tilts)
 const RADIUS_X = 2.45;
-const RADIUS_Y = 5.4;
-const BEAD_RADIUS = 0.13;
-const KNOT_RADIUS = 0.038;
+const RADIUS_Y = 5.2;
+const BEAD_RADIUS = 0.125;
+const KNOT_RADIUS = 0.035;
 
-// Swipe distance in pixels needed to roll exactly 1 bead
+// Swipe distance in pixels needed to advance 1 bead
 const SWIPE_THRESHOLD_PX = 32;
 
 const MalaHelix: React.FC<MalaHelixProps> = ({
@@ -36,32 +36,25 @@ const MalaHelix: React.FC<MalaHelixProps> = ({
 }) => {
     const meshRef = useRef<THREE.InstancedMesh>(null);
     const knotsMeshRef = useRef<THREE.InstancedMesh>(null);
-    const groupRef = useRef<THREE.Group>(null);
+    const guruGroupRef = useRef<THREE.Group>(null);
     const tasselGroupRef = useRef<THREE.Group>(null);
-    const focalRingRef = useRef<THREE.Group>(null);
     const activeGlowRef = useRef<THREE.PointLight>(null);
-    const { size } = useThree();
 
-    // Rotation & Kinematics State
-    // The mala is anchored; it rotates bead-by-bead to bring the next bead to the finger rest
-    const currentAngle = useRef(0);
-    const targetAngle = useRef(0);
-    const beadIndexOffset = useRef(0); // integer bead counter for precise detents
-    const dragOffsetAngle = useRef(0); // temporary elastic pull while finger is down
+    // Continuous float progress along the curve (0 to 108)
+    const currentBeadOffset = useRef(0);
+    const targetBeadOffset = useRef(0);
+    const dragDeltaBeads = useRef(0);
 
-    // Single-pointer interaction locking
+    // Single pointer tracking (pinch-proof)
     const activePointerId = useRef<number | null>(null);
     const isDragging = useRef(false);
     const startY = useRef(0);
-    const lastY = useRef(0);
-    const startTime = useRef(0);
-    const hasAdvancedThisGesture = useRef(false);
     const lastAdvanceTime = useRef(0);
-
-    const { updateTexture } = useSensoryFeedback();
+    const hasAdvancedThisGesture = useRef(false);
 
     const dummy = useMemo(() => new THREE.Object3D(), []);
     const knotDummy = useMemo(() => new THREE.Object3D(), []);
+    const upVector = useMemo(() => new THREE.Vector3(0, 1, 0), []);
 
     // Material configuration
     const matConfig = BEAD_MATERIAL_CONFIGS[materialType] || BEAD_MATERIAL_CONFIGS.tulsi;
@@ -94,7 +87,7 @@ const MalaHelix: React.FC<MalaHelixProps> = ({
         });
     }, [matConfig.threadColor]);
 
-    // Sacred Gold Accents Material
+    // Sacred Gold Sumeru Accents Material
     const goldMaterial = useMemo(() => {
         return new THREE.MeshStandardMaterial({
             color: '#f5c342',
@@ -114,52 +107,68 @@ const MalaHelix: React.FC<MalaHelixProps> = ({
         });
     }, [matConfig.tasselColor]);
 
-    // Generate Thread Path
-    const { threadCurve, beadPositions } = useMemo(() => {
+    // Precompute Stationary 3D Draped Curve & High-Res Sample Table
+    const { threadGeometry, curveLUT } = useMemo(() => {
         const points: THREE.Vector3[] = [];
-        const beadPosList: { pos: THREE.Vector3; rot: number }[] = [];
+        const numPoints = 120;
 
-        for (let i = 0; i < BEAD_COUNT; i++) {
-            const angle = (i / BEAD_COUNT) * Math.PI * 2;
-            const wobble = Math.sin(angle * 6) * 0.045 + Math.cos(angle * 3) * 0.025;
+        for (let i = 0; i < numPoints; i++) {
+            const angle = (i / numPoints) * Math.PI * 2;
+            const wobble = Math.sin(angle * 5) * 0.035;
             const x = Math.sin(angle) * (RADIUS_X + wobble);
             const y = Math.cos(angle) * (RADIUS_Y + wobble);
-            const z = Math.sin(angle * 2) * 0.22;
-
-            const pos = new THREE.Vector3(x, y, z);
-            points.push(pos);
-            beadPosList.push({ pos, rot: angle });
+            const z = Math.sin(angle * 2) * 0.15;
+            points.push(new THREE.Vector3(x, y, z));
         }
 
         const curve = new THREE.CatmullRomCurve3(points, true, 'centripetal');
-        return { threadCurve: curve, beadPositions: beadPosList };
+        const tubeGeom = new THREE.TubeGeometry(curve, 240, 0.016, 8, true);
+
+        // Precompute SAMPLES positions and tangents along the stationary curve
+        const lut: { pos: THREE.Vector3; tangent: THREE.Vector3 }[] = [];
+        for (let s = 0; s < SAMPLES; s++) {
+            const u = s / SAMPLES;
+            const pos = curve.getPointAt(u);
+            const tangent = curve.getTangentAt(u).normalize();
+            lut.push({ pos, tangent });
+        }
+
+        return { threadGeometry: tubeGeom, curveLUT: lut };
     }, []);
 
-    // Build the 3D Continuous Thread Tube Geometry
-    const threadGeometry = useMemo(() => {
-        return new THREE.TubeGeometry(threadCurve, 280, 0.016, 8, true);
-    }, [threadCurve]);
+    // Helper: evaluate position and tangent along the stationary curve at any fractional bead index
+    const sampleCurve = useCallback((beadIndex: number): { pos: THREE.Vector3; tangent: THREE.Vector3 } => {
+        const normalized = (((beadIndex % BEAD_COUNT) + BEAD_COUNT) % BEAD_COUNT) / BEAD_COUNT;
+        const lutIdx = Math.floor(normalized * SAMPLES) % SAMPLES;
+        return curveLUT[lutIdx];
+    }, [curveLUT]);
 
-    // Position 108 Beads and Knots
-    useEffect(() => {
+    // Update all 108 beads & knots along the stationary curve
+    const updateBeadInstances = useCallback((offset: number) => {
         if (!meshRef.current || !knotsMeshRef.current) return;
 
         for (let i = 0; i < BEAD_COUNT; i++) {
-            const { pos, rot } = beadPositions[i];
+            // Bead position along the fixed curve
+            const beadParam = i + offset;
+            const { pos, tangent } = sampleCurve(beadParam);
+
+            // Natural organic variation
             const naturalVariation = 1 + (Math.sin(i * 17) * 0.035);
+
             dummy.position.copy(pos);
-            dummy.rotation.z = -rot;
+            dummy.quaternion.setFromUnitVectors(upVector, tangent);
             dummy.scale.set(
-                BEAD_RADIUS * naturalVariation * 1.04,
+                BEAD_RADIUS * naturalVariation * 1.03,
                 BEAD_RADIUS * naturalVariation * 0.96,
-                BEAD_RADIUS * naturalVariation * 1.04
+                BEAD_RADIUS * naturalVariation * 1.03
             );
             dummy.updateMatrix();
             meshRef.current.setMatrixAt(i, dummy.matrix);
 
-            const nextIdx = (i + 1) % BEAD_COUNT;
-            const knotPos = pos.clone().lerp(beadPositions[nextIdx].pos, 0.5);
-            knotDummy.position.copy(knotPos);
+            // Knot position: halfway between bead i and bead i + 1
+            const knotParam = beadParam + 0.5;
+            const knotData = sampleCurve(knotParam);
+            knotDummy.position.copy(knotData.pos);
             knotDummy.scale.setScalar(KNOT_RADIUS);
             knotDummy.updateMatrix();
             knotsMeshRef.current.setMatrixAt(i, knotDummy.matrix);
@@ -167,74 +176,59 @@ const MalaHelix: React.FC<MalaHelixProps> = ({
 
         meshRef.current.instanceMatrix.needsUpdate = true;
         knotsMeshRef.current.instanceMatrix.needsUpdate = true;
-    }, [beadPositions, dummy, knotDummy]);
+    }, [sampleCurve, dummy, knotDummy, upVector]);
 
-    // Trigger exactly ONE bead advancement
+    // Trigger exactly ONE bead advance
     const advanceOneBead = useCallback(() => {
         const now = performance.now();
-        if (now - lastAdvanceTime.current < 120) return; // Debounce safeguard
+        if (now - lastAdvanceTime.current < 120) return; // Debounce
         lastAdvanceTime.current = now;
 
-        beadIndexOffset.current += 1;
-        targetAngle.current = beadIndexOffset.current * BEAD_STEP;
+        targetBeadOffset.current += 1;
         hasAdvancedThisGesture.current = true;
 
         SpatialAudio.playBeadClack();
         onIncrement();
 
         if (typeof navigator !== 'undefined' && navigator.vibrate) {
-            navigator.vibrate(14); // Crisp physical bead click
+            navigator.vibrate(14);
         }
     }, [onIncrement]);
 
-    // Frame update: Smooth magnetic spring to target bead angle
+    // Frame update: glide beads along the stationary curve
     useFrame((state, delta) => {
-        if (!groupRef.current) return;
         const t = state.clock.elapsedTime;
 
-        // Target angle combining locked bead detent + temporary elastic finger pull
-        const desiredAngle = targetAngle.current + dragOffsetAngle.current;
+        // Desired offset combines target bead index + temporary finger drag pull
+        const desiredOffset = targetBeadOffset.current + dragDeltaBeads.current;
 
-        // Smooth critically-damped spring interpolation (snaps cleanly into place)
-        const springSpeed = isDragging.current ? 18 : 12;
-        currentAngle.current = THREE.MathUtils.damp(
-            currentAngle.current,
-            desiredAngle,
-            springSpeed,
+        // Critically damped spring for smooth bead sliding along the track
+        currentBeadOffset.current = THREE.MathUtils.damp(
+            currentBeadOffset.current,
+            desiredOffset,
+            isDragging.current ? 20 : 12,
             delta
         );
 
-        // Keep mala hanging vertically anchored, with very gentle meditative breathing
-        const gentleSwayX = Math.sin(t * 0.7) * 0.012;
-        const gentleSwayY = Math.cos(t * 0.5) * 0.015;
-        groupRef.current.position.x = gentleSwayX;
-        groupRef.current.position.y = gentleSwayY;
-        groupRef.current.rotation.z = currentAngle.current;
+        // Update bead instances along the stationary curve
+        updateBeadInstances(currentBeadOffset.current);
 
-        // Tassel sways gently below the guru bead
+        // Tassel sways gently in ambient temple air
         if (tasselGroupRef.current) {
-            const tasselSway = Math.sin(t * 1.5) * 0.03;
-            tasselGroupRef.current.rotation.z = tasselSway;
+            tasselGroupRef.current.rotation.z = Math.sin(t * 1.4) * 0.035;
         }
 
-        // Pulse the sacred focal ring
-        if (focalRingRef.current) {
-            const scale = 1 + Math.sin(t * 2.8) * 0.04;
-            focalRingRef.current.scale.setScalar(scale);
-        }
-
-        // Active bead golden aura light
+        // Active focal glow pulse
         if (activeGlowRef.current) {
-            activeGlowRef.current.intensity = 1.3 + Math.sin(t * 3.2) * 0.35;
+            activeGlowRef.current.intensity = 1.2 + Math.sin(t * 3.0) * 0.3;
         }
     });
 
     // =========================================================================
-    // STRICT SINGLE-POINTER TOUCH & DRAG LOGIC (Pinch-Proof)
+    // STRICT SINGLE-POINTER TOUCH HANDLING (Pinch-Safe)
     // =========================================================================
 
     const onPointerDown = (e: ThreeEvent<PointerEvent>) => {
-        // Multi-touch guard: only allow primary pointer
         if (e.pointerType === 'touch' && !e.isPrimary) return;
         if (activePointerId.current !== null) return;
 
@@ -243,63 +237,53 @@ const MalaHelix: React.FC<MalaHelixProps> = ({
         isDragging.current = true;
         hasAdvancedThisGesture.current = false;
         startY.current = e.clientY;
-        lastY.current = e.clientY;
-        startTime.current = performance.now();
-        dragOffsetAngle.current = 0;
+        dragDeltaBeads.current = 0;
     };
 
     const onPointerMove = (e: ThreeEvent<PointerEvent>) => {
         if (!isDragging.current) return;
-        if (e.pointerId !== activePointerId.current) return; // Ignore any other finger
+        if (e.pointerId !== activePointerId.current) return;
 
-        const currentY = e.clientY;
-        const deltaFromStart = currentY - startY.current; // Positive = pulling downward
+        const deltaY = e.clientY - startY.current; // Positive = pulling downward
 
-        // Elastic resistance: thumb pulls down bead
-        // Clamp to at most 1 bead's worth of visual deflection so it never spins wildly
-        const maxDeflection = BEAD_STEP * 1.2;
-        const rawAngle = (deltaFromStart / SWIPE_THRESHOLD_PX) * BEAD_STEP;
-        dragOffsetAngle.current = THREE.MathUtils.clamp(rawAngle, -maxDeflection * 0.3, maxDeflection);
+        // Elastic bead displacement along the curve (clamped to 1 bead max)
+        const beadDisplacement = deltaY / SWIPE_THRESHOLD_PX;
+        dragDeltaBeads.current = THREE.MathUtils.clamp(beadDisplacement, -0.3, 1.2);
 
-        // If pulled down past threshold and haven't counted yet on this stroke:
-        if (deltaFromStart >= SWIPE_THRESHOLD_PX && !hasAdvancedThisGesture.current) {
+        // Advance 1 bead once pulled past threshold
+        if (deltaY >= SWIPE_THRESHOLD_PX && !hasAdvancedThisGesture.current) {
             advanceOneBead();
-            // Reset startY so subsequent intentional stroke in same gesture could be rolled after a delay
-            startY.current = currentY;
-            dragOffsetAngle.current = 0;
+            startY.current = e.clientY;
+            dragDeltaBeads.current = 0;
         }
-
-        lastY.current = currentY;
     };
 
     const onPointerUp = (e: ThreeEvent<PointerEvent>) => {
         if (e.pointerId !== activePointerId.current) return;
 
-        const duration = performance.now() - startTime.current;
-        const deltaFromStart = Math.abs(e.clientY - startY.current);
+        const deltaY = Math.abs(e.clientY - startY.current);
 
-        // If it was a quick tap or small touch without pulling past threshold, count 1 bead!
-        if (!hasAdvancedThisGesture.current && duration < 320 && deltaFromStart < 15) {
+        // Tap without dragging counts 1 bead cleanly
+        if (!hasAdvancedThisGesture.current && deltaY < 12) {
             advanceOneBead();
         }
 
         isDragging.current = false;
         activePointerId.current = null;
-        dragOffsetAngle.current = 0; // Release elastic tension back to snapped bead
+        dragDeltaBeads.current = 0; // Snap back smoothly to locked bead
     };
 
     const onPointerCancel = () => {
         isDragging.current = false;
         activePointerId.current = null;
-        dragOffsetAngle.current = 0;
+        dragDeltaBeads.current = 0;
     };
 
-    // Global cleanup if pointer leaves window
     useEffect(() => {
         const handleGlobalUp = () => {
             isDragging.current = false;
             activePointerId.current = null;
-            dragOffsetAngle.current = 0;
+            dragDeltaBeads.current = 0;
         };
         window.addEventListener('pointerup', handleGlobalUp);
         window.addEventListener('pointercancel', handleGlobalUp);
@@ -309,16 +293,15 @@ const MalaHelix: React.FC<MalaHelixProps> = ({
         };
     }, []);
 
-    // Guru bead Y coordinate
-    const guruY = RADIUS_Y + 0.06;
+    // Guru bead (Sumeru) position at top crown of the stationary drape
+    const guruPos = curveLUT[0]?.pos || new THREE.Vector3(0, RADIUS_Y, 0);
 
-    // Focal Finger Rest position (right side where hand traditionally holds the mala)
-    const focalX = RADIUS_X;
-    const focalY = 0;
+    // Focal point position (on right curve where hand holds beads)
+    const focalPos = sampleCurve(BEAD_COUNT * 0.25).pos;
 
     return (
         <>
-            {/* Full-viewport touch hit plane (touch-action none) */}
+            {/* Full-viewport touch hit plane */}
             <mesh
                 position={[0, 0, -3]}
                 onPointerDown={onPointerDown}
@@ -330,27 +313,14 @@ const MalaHelix: React.FC<MalaHelixProps> = ({
                 <meshBasicMaterial transparent opacity={0} depthWrite={false} />
             </mesh>
 
-            {/* Sacred Focal Finger Rest Marker (The Sacred Touch Point) */}
-            <group ref={focalRingRef} position={[focalX, focalY, 0]}>
-                {/* Luminous Outer Halo Ring */}
+            {/* Subtle Divine Focal Finger Ring at the active bead position */}
+            <group position={[focalPos.x, focalPos.y, focalPos.z]}>
                 <mesh>
                     <ringGeometry args={[0.22, 0.25, 32]} />
                     <meshBasicMaterial
                         color="#ffd573"
                         transparent
-                        opacity={0.65}
-                        side={THREE.DoubleSide}
-                        depthWrite={false}
-                        blending={THREE.AdditiveBlending}
-                    />
-                </mesh>
-                {/* Subtle Inner Glow Ring */}
-                <mesh>
-                    <ringGeometry args={[0.16, 0.18, 32]} />
-                    <meshBasicMaterial
-                        color="#ffa834"
-                        transparent
-                        opacity={0.4}
+                        opacity={0.55}
                         side={THREE.DoubleSide}
                         depthWrite={false}
                         blending={THREE.AdditiveBlending}
@@ -358,22 +328,22 @@ const MalaHelix: React.FC<MalaHelixProps> = ({
                 </mesh>
             </group>
 
-            {/* Active counting touch point halo light */}
+            {/* Active counting halo light */}
             <pointLight
                 ref={activeGlowRef}
-                position={[focalX, focalY, 0.7]}
+                position={[focalPos.x, focalPos.y, focalPos.z + 0.6]}
                 color="#ffd573"
-                intensity={1.4}
-                distance={4.5}
+                intensity={1.2}
+                distance={4}
                 decay={2}
             />
 
-            {/* Anchored Sacred Mala Loop */}
-            <group ref={groupRef}>
-                {/* Continuous 3D Sacred Silk Thread Cord */}
+            {/* Stationary Sacred Mala (stays upright, beads slide along it) */}
+            <group>
+                {/* Continuous 3D Sacred Silk Thread Cord (STATIONARY) */}
                 <mesh geometry={threadGeometry} material={threadMaterial} />
 
-                {/* 108 Individual Hand-Tied Brahma-Granthi Knots */}
+                {/* 108 Brahma-Granthi Knots (glides along curve) */}
                 <instancedMesh
                     ref={knotsMeshRef}
                     args={[undefined, undefined, BEAD_COUNT]}
@@ -382,7 +352,7 @@ const MalaHelix: React.FC<MalaHelixProps> = ({
                     <sphereGeometry args={[1, 10, 10]} />
                 </instancedMesh>
 
-                {/* 108 Sacred Beads */}
+                {/* 108 Sacred Beads (glides along curve) */}
                 <instancedMesh
                     ref={meshRef}
                     args={[undefined, undefined, BEAD_COUNT]}
@@ -392,9 +362,9 @@ const MalaHelix: React.FC<MalaHelixProps> = ({
                 </instancedMesh>
 
                 {/* ============================================================== */}
-                {/* SACRED SUMERU (GURU BEAD) ASSEMBLY                             */}
+                {/* SACRED SUMERU (GURU BEAD) CROWN ASSEMBLY                       */}
                 {/* ============================================================== */}
-                <group position={[0, guruY, 0]}>
+                <group ref={guruGroupRef} position={[guruPos.x, guruPos.y + 0.08, guruPos.z]}>
                     {/* Main Sumeru Carved Bead */}
                     <mesh material={beadMaterial} scale={[0.22, 0.2, 0.22]}>
                         <sphereGeometry args={[1, 32, 32]} />

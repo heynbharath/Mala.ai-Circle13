@@ -26,7 +26,7 @@ export default function Home() {
 
   const [isDashboardOpen, setIsDashboardOpen] = useState(false);
   const [activeMaterial, setActiveMaterial] = useState<BeadMaterialType>('tulsi');
-  const [isAudioMuted, setIsAudioMuted] = useState(false);
+  const [isAudioMuted, setIsAudioMuted] = useState(true);
   const [isZenMode, setIsZenMode] = useState(false);
 
   // Restore bead material preference on mount
@@ -70,9 +70,6 @@ export default function Home() {
     setIsAudioMuted(prev => {
       const next = !prev;
       SpatialAudio.setMuted(next);
-      if (!next) {
-        SpatialAudio.startAmbience();
-      }
       return next;
     });
   }, []);

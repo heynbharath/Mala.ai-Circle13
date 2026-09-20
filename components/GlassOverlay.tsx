@@ -66,23 +66,11 @@ const GlassOverlay: React.FC<GlassOverlayProps> = ({
     const [celebrationText, setCelebrationText] = useState<string | null>(null);
     const prevCount = useRef(count);
 
-    // Quarter milestones (27, 54, 81) & Round completion (0 or 108)
+    // Only Full Round completion notification (108)
     useEffect(() => {
-        if (count === 27 && prevCount.current !== 27) {
-            setCelebrationText('27 Offerings · 1/4 Mala');
-            const timer = setTimeout(() => setCelebrationText(null), 3000);
-            return () => clearTimeout(timer);
-        } else if (count === 54 && prevCount.current !== 54) {
-            setCelebrationText('54 Offerings · Half Mala Complete');
-            const timer = setTimeout(() => setCelebrationText(null), 3500);
-            return () => clearTimeout(timer);
-        } else if (count === 81 && prevCount.current !== 81) {
-            setCelebrationText('81 Offerings · 3/4 Mala Complete');
-            const timer = setTimeout(() => setCelebrationText(null), 3000);
-            return () => clearTimeout(timer);
-        } else if (count === 0 && prevCount.current > 100) {
+        if (count === 0 && prevCount.current > 100) {
             setCelebrationText(`Round ${round} Complete · 108 Sacred Offerings`);
-            const timer = setTimeout(() => setCelebrationText(null), 4500);
+            const timer = setTimeout(() => setCelebrationText(null), 4000);
             return () => clearTimeout(timer);
         }
         prevCount.current = count;
@@ -239,27 +227,6 @@ const GlassOverlay: React.FC<GlassOverlayProps> = ({
                                 filter: 'drop-shadow(0 0 6px rgba(255, 215, 80, 0.75))',
                             }}
                         />
-                        {/* Quarter Milestone Jewel Dots (27, 54, 81, 108) */}
-                        {[0, 0.25, 0.5, 0.75].map((pct, idx) => {
-                            const ang = pct * Math.PI * 2;
-                            const cx = 100 + Math.cos(ang) * radius;
-                            const cy = 100 + Math.sin(ang) * radius;
-                            const reached = count >= (idx + 1) * 27 || (idx === 0 && count >= 27);
-                            return (
-                                <circle
-                                    key={idx}
-                                    cx={cx}
-                                    cy={cy}
-                                    r={reached ? 4 : 2.5}
-                                    className={`transition-colors duration-500 ${
-                                        reached ? 'fill-amber-300' : 'fill-white/30'
-                                    }`}
-                                    style={{
-                                        filter: reached ? 'drop-shadow(0 0 4px rgba(255, 230, 100, 0.9))' : 'none'
-                                    }}
-                                />
-                            );
-                        })}
                     </svg>
 
                     {/* Central Number & Glyph */}
