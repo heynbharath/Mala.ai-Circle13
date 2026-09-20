@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Nitya — Digital Japa Mala",
-  description: "A living digital mala for mantra meditation. Count with a tap, a drag, or your voice.",
+  description: "A digital mala for the Hare Krishna Maha Mantra and Radha Naam japa. Turn a bead, speak the name, or simply tap — every chant counts toward your round of 108.",
   manifest: "/manifest.json",
   icons: {
     icon: "/icon.svg",
@@ -28,7 +28,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#050505",
+  themeColor: "#0a0603",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,

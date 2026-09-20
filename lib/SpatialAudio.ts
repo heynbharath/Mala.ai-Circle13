@@ -1,7 +1,6 @@
 export class SpatialAudio {
     private static ctx: AudioContext | null = null;
-    private static binauralNodes: { oscL: OscillatorNode; oscR: OscillatorNode; gain: GainNode } | null = null;
-    private static atmosphereGain: GainNode | null = null;
+    private static droneNodes: { oscA: OscillatorNode; oscB: OscillatorNode; gain: GainNode } | null = null;
 
     public static initialize() {
         if (typeof window === 'undefined') return;
@@ -15,8 +14,9 @@ export class SpatialAudio {
     }
 
     /**
-     * Start the 432Hz Binaural Beat (Theta wave induction)
-     * Left: 432Hz, Right: 436Hz -> 4Hz beat
+     * A soft, sustained tanpura-like drone on the tonic (Sa) — two gently
+     * detuned voices through a warm low-pass filter, the way a background
+     * drone sits under kirtan, rather than a stereo "brainwave" effect.
      */
     public static startAmbience() {
         this.initialize();
@@ -26,34 +26,35 @@ export class SpatialAudio {
             this.ctx.resume();
         }
 
-        if (this.binauralNodes) return; // Already playing
+        if (this.droneNodes) return; // Already playing
 
-        // Master atmosphere gain
-        this.atmosphereGain = this.ctx.createGain();
-        this.atmosphereGain.gain.setValueAtTime(0, this.ctx.currentTime);
-        this.atmosphereGain.gain.linearRampToValueAtTime(0.15, this.ctx.currentTime + 3); // Fade in
-        this.atmosphereGain.connect(this.ctx.destination);
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0, this.ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.09, this.ctx.currentTime + 4); // Slow fade in
 
-        // Left Ear (432Hz)
-        const oscL = this.ctx.createOscillator();
-        oscL.type = 'sine';
-        oscL.frequency.value = 432;
-        const pannerL = this.ctx.createStereoPanner();
-        pannerL.pan.value = -1;
-        oscL.connect(pannerL).connect(this.atmosphereGain);
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.value = 800;
 
-        // Right Ear (436Hz)
-        const oscR = this.ctx.createOscillator();
-        oscR.type = 'sine';
-        oscR.frequency.value = 436; // 4Hz difference = Theta state
-        const pannerR = this.ctx.createStereoPanner();
-        pannerR.pan.value = 1;
-        oscR.connect(pannerR).connect(this.atmosphereGain);
+        filter.connect(gain).connect(this.ctx.destination);
 
-        oscL.start();
-        oscR.start();
+        const TONIC = 130.81; // C3 — a comfortable low Sa
 
-        this.binauralNodes = { oscL, oscR, gain: this.atmosphereGain };
+        const oscA = this.ctx.createOscillator();
+        oscA.type = 'sine';
+        oscA.frequency.value = TONIC;
+
+        const oscB = this.ctx.createOscillator();
+        oscB.type = 'triangle';
+        oscB.frequency.value = TONIC * 1.5; // Pa (perfect fifth) — the drone's natural partner
+
+        oscA.connect(filter);
+        oscB.connect(filter);
+
+        oscA.start();
+        oscB.start();
+
+        this.droneNodes = { oscA, oscB, gain };
     }
 
     /**

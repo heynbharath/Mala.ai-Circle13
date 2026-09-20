@@ -10,10 +10,15 @@ interface MalaHelixProps {
 }
 
 const BEAD_COUNT = 108;
-const BEAD_STEP = (Math.PI * 2) / BEAD_COUNT; // Angular distance = one counted "click"
-const TAP_ROTATION_EPSILON = BEAD_STEP * 0.4; // Below this, a gesture is a tap, not a drag
+const BEAD_STEP = (Math.PI * 2) / BEAD_COUNT; // Angular distance = one counted bead
 const MAX_VELOCITY = 40; // rad/s — caps momentum so a fling can't spin into hundreds of counts
 const MIN_VELOCITY_DT = 1 / 120; // seconds — floors the timing sample so a burst of events can't fake huge velocity
+// A tall loop, like a mala actually hangs when held between two hands —
+// not a flat circle (which gets clipped on a portrait phone screen) and
+// not a double-helix (which reads as DNA, not a mala).
+const RADIUS_X = 2.3;
+const RADIUS_Y = 5.5;
+const BEAD_SCALE = 0.12; // sized so 108 beads touch around the loop without fusing into a solid ring
 
 const MalaHelix: React.FC<MalaHelixProps> = ({ onIncrement }) => {
     const meshRef = useRef<THREE.InstancedMesh>(null);
@@ -26,31 +31,39 @@ const MalaHelix: React.FC<MalaHelixProps> = ({ onIncrement }) => {
     const isDragging = useRef(false);
     const lastY = useRef(0);
     const lastTime = useRef(0);
-    const gestureDistance = useRef(0); // Total |rotation| moved during current drag
-    const distanceSinceLastCount = useRef(0); // Consumed in BEAD_STEP chunks -> onIncrement
+    const countedThisGesture = useRef(false); // true once a real bead-crossing has counted during this gesture
+    const distanceSinceLastCount = useRef(0); // consumed in BEAD_STEP chunks -> onIncrement
 
     const { updateTexture } = useSensoryFeedback();
 
     const dummy = useMemo(() => new THREE.Object3D(), []);
+    // Tulsi wood tone: warm, matte — a real mala bead, not polished chrome.
     const material = useMemo(() => new THREE.MeshStandardMaterial({
-        color: '#B0C4DE',
+        color: '#8a5a2f',
+        roughness: 0.75,
+        metalness: 0.05,
+    }), []);
+    const guruMaterial = useMemo(() => new THREE.MeshStandardMaterial({
+        color: '#FFD700',
         roughness: 0.4,
-        metalness: 0.8,
+        metalness: 0.3,
+        emissive: '#7a4a00',
+        emissiveIntensity: 0.6,
     }), []);
 
+    // Single loop of 108 beads, draped vertically as a mala hangs in the hand.
     useEffect(() => {
         if (!meshRef.current) return;
         for (let i = 0; i < BEAD_COUNT; i++) {
-            const t = (i / BEAD_COUNT) * Math.PI * 8;
-            const radius = 2.8;
-            const heightFactor = 0.12;
+            const angle = (i / BEAD_COUNT) * Math.PI * 2;
+            const wobble = Math.sin(angle * 5) * 0.06; // gentle irregularity, like hand-strung beads
 
-            const x = Math.cos(t) * radius;
-            const z = Math.sin(t) * radius;
-            const y = (i - BEAD_COUNT / 2) * heightFactor;
+            const x = Math.sin(angle) * (RADIUS_X + wobble);
+            const y = Math.cos(angle) * (RADIUS_Y + wobble);
+            const z = Math.cos(angle * 2) * 0.2;
 
             dummy.position.set(x, y, z);
-            dummy.scale.setScalar(0.25);
+            dummy.scale.setScalar(BEAD_SCALE);
             dummy.updateMatrix();
             meshRef.current.setMatrixAt(i, dummy.matrix);
         }
@@ -62,6 +75,7 @@ const MalaHelix: React.FC<MalaHelixProps> = ({ onIncrement }) => {
         distanceSinceLastCount.current += Math.abs(delta);
         while (distanceSinceLastCount.current >= BEAD_STEP) {
             distanceSinceLastCount.current -= BEAD_STEP;
+            countedThisGesture.current = true;
             onIncrement();
         }
     };
@@ -82,13 +96,14 @@ const MalaHelix: React.FC<MalaHelixProps> = ({ onIncrement }) => {
             }
         }
 
-        groupRef.current.rotation.y = rotation.current;
+        groupRef.current.rotation.z = rotation.current;
     });
 
     const onPointerDown = (e: ThreeEvent<PointerEvent>) => {
         e.stopPropagation();
         isDragging.current = true;
-        gestureDistance.current = 0;
+        countedThisGesture.current = false;
+        distanceSinceLastCount.current = 0;
         lastY.current = e.clientY;
         lastTime.current = performance.now();
         velocity.current = 0;
@@ -104,7 +119,6 @@ const MalaHelix: React.FC<MalaHelixProps> = ({ onIncrement }) => {
         const deltaRotation = deltaPixel * sensitivity;
 
         rotation.current += deltaRotation;
-        gestureDistance.current += Math.abs(deltaRotation);
         consumeDistance(deltaRotation);
 
         const now = performance.now();
@@ -118,8 +132,10 @@ const MalaHelix: React.FC<MalaHelixProps> = ({ onIncrement }) => {
     };
 
     const onPointerUp = () => {
-        if (isDragging.current && gestureDistance.current < TAP_ROTATION_EPSILON) {
-            // Treated as a tap: count one bead directly.
+        // Only a gesture that never crossed a full bead-step counts as a tap.
+        // This is checked instead of comparing total drag distance, so a
+        // real (small) crossing during the move phase is never double-counted.
+        if (isDragging.current && !countedThisGesture.current) {
             onIncrement();
         }
         isDragging.current = false;
@@ -154,6 +170,10 @@ const MalaHelix: React.FC<MalaHelixProps> = ({ onIncrement }) => {
                 <instancedMesh ref={meshRef} args={[undefined, undefined, BEAD_COUNT]} material={material}>
                     <sphereGeometry args={[1, 16, 16]} />
                 </instancedMesh>
+                {/* Guru bead — the traditional marker you don't cross, at the top of the loop */}
+                <mesh position={[0, RADIUS_Y + 0.05, 0]} material={guruMaterial}>
+                    <sphereGeometry args={[BEAD_SCALE * 1.8, 24, 24]} />
+                </mesh>
             </group>
         </>
     );

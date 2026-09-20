@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { db } from '@/lib/db';
-import { validateChant, cleanBufferAfterMatch } from '@/lib/mantra-logic';
+import { countMatches } from '@/lib/mantra-logic';
+import { MANTRAS, DEFAULT_MANTRA, isMantraId, type MantraId } from '@/lib/mantras';
 import { triggerHapticFeedback, triggerMalaCompletion } from '@/lib/haptics';
 import { SpatialAudio } from '@/lib/SpatialAudio';
 
@@ -37,32 +38,55 @@ interface IWindow extends Window {
 export type VoiceStatus = 'idle' | 'listening' | 'unsupported' | 'denied' | 'error';
 
 export const useMantraEngine = () => {
-    // Persisted State (Lazy Init from localStorage for speed, Dexie for logs)
-    const [count, setCount] = useState(() => {
-        if (typeof window !== 'undefined') return parseInt(localStorage.getItem('nitya_count') || '0');
-        return 0;
-    });
-    const [round, setRound] = useState(() => {
-        if (typeof window !== 'undefined') return parseInt(localStorage.getItem('nitya_round') || '0');
-        return 0;
-    });
-    const [lifetimeCount, setLifetimeCount] = useState(() => {
-        if (typeof window !== 'undefined') return parseInt(localStorage.getItem('nitya_lifetime') || '0');
-        return 0;
-    });
+    // Persisted state — always starts at the same default on server and
+    // client so the first render matches (no hydration mismatch), then a
+    // layout effect restores the real value from localStorage before paint.
+    const [count, setCount] = useState(0);
+    const [round, setRound] = useState(0);
+    const [lifetimeCount, setLifetimeCount] = useState(0);
+    const [mantraId, setMantraIdState] = useState<MantraId>(DEFAULT_MANTRA);
 
     const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>('idle');
     const isListening = voiceStatus === 'listening';
     const isListeningRef = useRef(false);
     const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
     const transcriptBuffer = useRef("");
+    const hasHydrated = useRef(false);
+
+    // --- Restore from localStorage, before the browser paints ---
+    // localStorage doesn't exist on the server, so this can only run as an
+    // effect; without it, count/round would mismatch between the server's
+    // and the client's first render (a hydration error) for any returning
+    // user with a non-zero saved count.
+    /* eslint-disable react-hooks/set-state-in-effect -- one-time restore from
+       a browser-only store; there is no render-time alternative. */
+    useLayoutEffect(() => {
+        setCount(parseInt(localStorage.getItem('nitya_count') || '0', 10));
+        setRound(parseInt(localStorage.getItem('nitya_round') || '0', 10));
+        setLifetimeCount(parseInt(localStorage.getItem('nitya_lifetime') || '0', 10));
+        const storedMantra = localStorage.getItem('nitya_mantra');
+        if (isMantraId(storedMantra)) setMantraIdState(storedMantra);
+        hasHydrated.current = true;
+    }, []);
+    /* eslint-enable react-hooks/set-state-in-effect */
 
     // --- Persistence Sync ---
     useEffect(() => {
+        if (!hasHydrated.current) return;
         localStorage.setItem('nitya_count', count.toString());
         localStorage.setItem('nitya_round', round.toString());
         localStorage.setItem('nitya_lifetime', lifetimeCount.toString());
     }, [count, round, lifetimeCount]);
+
+    useEffect(() => {
+        if (!hasHydrated.current) return;
+        localStorage.setItem('nitya_mantra', mantraId);
+        transcriptBuffer.current = ""; // avoid matching the old mantra's tail against the new one
+    }, [mantraId]);
+
+    const setMantra = useCallback((id: MantraId) => setMantraIdState(id), []);
+
+    const roundLength = MANTRAS[mantraId].roundLength;
 
     // --- Core Increment Logic ---
     const increment = useCallback((source: 'voice' | 'touch' | 'keyboard') => {
@@ -73,7 +97,7 @@ export const useMantraEngine = () => {
 
             if (newCount === 1) SpatialAudio.startAmbience();
 
-            if (newCount % 108 === 0) {
+            if (newCount % roundLength === 0) {
                 triggerMalaCompletion();
                 SpatialAudio.playBell('deep');
                 setRound(r => r + 1);
@@ -103,26 +127,27 @@ export const useMantraEngine = () => {
             duration: 0,
             type: source
         });
-    }, []);
+    }, [roundLength]);
 
     // --- Voice Engine (Regex Stream) ---
     const handleVoiceInput = useCallback((text: string) => {
         transcriptBuffer.current += " " + text;
-        const buffer = transcriptBuffer.current;
 
-        if (validateChant(buffer)) {
+        const { count: matches, remainder } = countMatches(transcriptBuffer.current, MANTRAS[mantraId].regex);
+        transcriptBuffer.current = remainder;
+
+        for (let i = 0; i < matches; i++) {
             increment('voice');
-            transcriptBuffer.current = cleanBufferAfterMatch(buffer);
+        }
 
-            if (typeof navigator !== 'undefined' && navigator.vibrate) {
-                navigator.vibrate([10, 30, 10, 30, 50]);
-            }
+        if (matches > 0 && typeof navigator !== 'undefined' && navigator.vibrate) {
+            navigator.vibrate([10, 30, 10, 30, 50]);
         }
 
         if (transcriptBuffer.current.length > 500) {
             transcriptBuffer.current = transcriptBuffer.current.slice(-200);
         }
-    }, [increment]);
+    }, [increment, mantraId]);
 
     const stopListening = useCallback(() => {
         isListeningRef.current = false;
@@ -208,6 +233,9 @@ export const useMantraEngine = () => {
         count,
         round,
         lifetimeCount,
+        mantraId,
+        mantra: MANTRAS[mantraId],
+        setMantra,
         isListening,
         voiceStatus,
         toggleMode,

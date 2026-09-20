@@ -1,11 +1,11 @@
 {
     "name": "Nitya — Digital Japa Mala",
     "short_name": "Nitya",
-    "description": "A living digital mala for mantra meditation. Count with a tap, a drag, or your voice.",
+    "description": "A digital mala for the Hare Krishna Maha Mantra and Radha Naam japa.",
     "start_url": "/",
     "display": "standalone",
-    "background_color": "#050505",
-    "theme_color": "#050505",
+    "background_color": "#0a0603",
+    "theme_color": "#0a0603",
     "icons": [
         {
             "src": "/icon.svg",

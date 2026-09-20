@@ -1,42 +1,38 @@
-// Phonetic Intent Detection Logic
+// Phonetic Intent Detection Logic — one regex per mantra, tolerant of the
+// misheard variants speech recognizers commonly produce.
 
 const HARE = "(hare|hari|harey|hurry)";
 const KRISHNA = "(krishna|krisna|krsna|krushna)";
 const RAMA = "(rama|ram|raama)";
 
-// This regex matches the full 16-word sequence regardless of spaces or minor noise
-// "Hare Krishna Hare Krishna Krishna Krishna Hare Hare / Hare Rama Hare Rama Rama Rama Hare Hare"
-export const MANTRA_REGEX = new RegExp(
+// The full 16-word Hare Krishna maha-mantra, matched as one block:
+// "Hare Krishna Hare Krishna Krishna Krishna Hare Hare
+//  Hare Rama Hare Rama Rama Rama Hare Hare"
+export const HARE_KRISHNA_REGEX = new RegExp(
     `${HARE}.*?${KRISHNA}.*?${HARE}.*?${KRISHNA}.*?${KRISHNA}.*?${KRISHNA}.*?${HARE}.*?${HARE}.*?` +
     `${HARE}.*?${RAMA}.*?${HARE}.*?${RAMA}.*?${RAMA}.*?${RAMA}.*?${HARE}.*?${HARE}`,
     "gi"
 );
 
-/**
- * Validates if the transcript contains the full mantra.
- * Returns true if a match is found.
- */
-export const validateChant = (transcript: string): boolean => {
-    return MANTRA_REGEX.test(transcript);
-};
+// Radha Naam — a single name, repeated. Each occurrence is its own count.
+export const RADHA_NAAM_REGEX = /(radhe|radha|radey|radhey|radharani)/gi;
 
 /**
- * Strips the buffer up to the end of the last match to prevent double counting.
- * Returns the remaining buffer string.
+ * Counts how many non-overlapping matches of `regex` appear in `buffer`,
+ * starting from the beginning, and returns the unmatched tail so the caller
+ * can keep it as the next buffer (preserving a partial word mid-utterance).
  */
-export const cleanBufferAfterMatch = (transcript: string): string => {
-    // Determine the last match index
-    // RegExp.exec is stateful if global, so allow fresh check
-    const regex = new RegExp(MANTRA_REGEX.source, "gi");
+export const countMatches = (buffer: string, regex: RegExp): { count: number; remainder: string } => {
+    const r = new RegExp(regex.source, regex.flags.includes('g') ? regex.flags : regex.flags + 'g');
+    let count = 0;
     let lastIndex = 0;
+    let match: RegExpExecArray | null;
 
-    // Find last full match
-    while (regex.exec(transcript) !== null) {
-        lastIndex = regex.lastIndex;
+    while ((match = r.exec(buffer)) !== null) {
+        count++;
+        lastIndex = r.lastIndex;
+        if (match.index === r.lastIndex) r.lastIndex++; // guard against zero-length matches
     }
 
-    if (lastIndex > 0) {
-        return transcript.substring(lastIndex);
-    }
-    return transcript;
+    return { count, remainder: lastIndex > 0 ? buffer.substring(lastIndex) : buffer };
 };

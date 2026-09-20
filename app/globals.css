@@ -1,12 +1,12 @@
 @import "tailwindcss";
 
 :root {
-  --background: #050505;
-  --foreground: #e0e0e0;
+  --background: #0a0603;
+  --foreground: #f0e6d8;
   --neon-gold: #ffd700;
-  --neon-gold-glow: rgba(255, 215, 0, 0.5);
-  --deep-black: #050505;
-  --glass-overlay: rgba(255, 255, 255, 0.05);
+  --neon-gold-glow: rgba(255, 190, 80, 0.5);
+  --deep-black: #0a0603;
+  --glass-overlay: rgba(255, 220, 180, 0.05);
 }
 
 @theme inline {

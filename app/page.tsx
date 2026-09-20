@@ -13,6 +13,9 @@ export default function Home() {
     count,
     round,
     lifetimeCount,
+    mantraId,
+    mantra,
+    setMantra,
     isListening,
     voiceStatus,
     toggleMode,
@@ -23,21 +26,21 @@ export default function Home() {
   const toggleDashboard = useCallback(() => setIsDashboardOpen(prev => !prev), []);
 
   // Progress within the current round (0 -> 1), used to drive ambient visuals.
-  const intensity = (count % 108) / 108;
+  const intensity = (count % mantra.roundLength) / mantra.roundLength;
 
   return (
-    <main className="relative w-full h-screen bg-[#030303] overflow-hidden">
+    <main className="relative w-full h-screen bg-[#0a0603] overflow-hidden">
 
       {/* 3D Scene Layer */}
       <div className="absolute inset-0 z-0">
         <Canvas camera={{ position: [0, 0, 15], fov: 45 }}>
 
-          {/* Environment */}
-          <ambientLight intensity={0.2} />
+          {/* Environment — warm temple light, not cold sci-fi */}
+          <ambientLight intensity={0.25} />
           <pointLight position={[10, 10, 10]} intensity={1} color="#FFD700" />
-          <pointLight position={[-10, -5, -5]} intensity={0.5} color="#4B0082" />
+          <pointLight position={[-10, -5, -5]} intensity={0.4} color="#7a1f0a" />
 
-          {/* Background Shader */}
+          {/* Background glow */}
           <AuraBackground intensity={intensity} />
 
           {/* Main 3D Interactive Element — drag or tap the mala to count */}
@@ -53,6 +56,7 @@ export default function Home() {
         count={count}
         round={round}
         lifetimeCount={lifetimeCount}
+        mantra={mantra}
         isListening={isListening}
         voiceStatus={voiceStatus}
         onToggleListen={toggleMode}
@@ -60,7 +64,13 @@ export default function Home() {
       />
 
       {/* Overlay Dashboard (hidden by default, triggered by settings) */}
-      <Dashboard round={round} isOpen={isDashboardOpen} onClose={() => setIsDashboardOpen(false)} />
+      <Dashboard
+        round={round}
+        mantraId={mantraId}
+        onSelectMantra={setMantra}
+        isOpen={isDashboardOpen}
+        onClose={() => setIsDashboardOpen(false)}
+      />
 
     </main>
   );

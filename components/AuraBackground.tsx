@@ -2,7 +2,7 @@
 
 import React, { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { Environment, Float } from '@react-three/drei';
+import { Float } from '@react-three/drei';
 import * as THREE from 'three';
 
 interface AuraBackgroundProps {
@@ -20,35 +20,27 @@ const AuraBackground: React.FC<AuraBackgroundProps> = ({ intensity = 0 }) => {
             meshRef.current.rotation.y = Math.sin(t * 0.3) * 0.2;
 
             // Pulse scale slightly with intensity
-            const scale = 5 + intensity * 0.5;
+            const scale = 3 + intensity * 0.4;
             meshRef.current.scale.setScalar(scale);
         }
     });
 
     return (
-        <>
-            <Environment preset="city" blur={0.8} />
-
-            <Float speed={2} rotationIntensity={0.5} floatIntensity={0.2}>
-                <mesh ref={meshRef} position={[0, 0, -5]}>
-                    <sphereGeometry args={[1, 64, 64]} />
-                    {/* Metal/Glass Look using Standard Material - Faster than Transmission */}
-                    <meshPhysicalMaterial
-                        color="#111111"
-                        roughness={0.15}
-                        metalness={0.9}
-                        clearcoat={1}
-                        clearcoatRoughness={0.1}
-                        reflectivity={1}
-                        emissive="#4B0082" // Deep Indigo Glow
-                        emissiveIntensity={0.2 + intensity * 0.5}
-                    />
-                </mesh>
-            </Float>
-
-            {/* Simple Particle Dust for depth (Billboards = Cheap) */}
-            {/* Omitted for pure performance focus now, can add back if needed */}
-        </>
+        <Float speed={1.2} rotationIntensity={0.3} floatIntensity={0.2}>
+            {/* A soft, self-lit disc of warm light, smaller than the mala loop
+                so it reads as a glow behind it — no external environment map,
+                so it renders identically offline and never depends on a CDN fetch. */}
+            <mesh ref={meshRef} position={[0, 0, -8]}>
+                <sphereGeometry args={[1, 64, 64]} />
+                <meshStandardMaterial
+                    color="#3a1600"
+                    roughness={0.7}
+                    metalness={0}
+                    emissive="#FFA500"
+                    emissiveIntensity={0.4 + intensity * 0.7}
+                />
+            </mesh>
+        </Float>
     );
 };
 

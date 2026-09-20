@@ -3,10 +3,13 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { db } from '@/lib/db';
-import { Activity, Flame, Calendar, X } from 'lucide-react';
+import { Flower2, Flame, Calendar, X, Check } from 'lucide-react';
+import { MANTRAS, type MantraId } from '@/lib/mantras';
 
 interface DashboardProps {
     round: number;
+    mantraId: MantraId;
+    onSelectMantra: (id: MantraId) => void;
     isOpen: boolean;
     onClose: () => void;
 }
@@ -16,17 +19,14 @@ interface DayStat {
     count: number;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ round, isOpen, onClose }) => {
+const Dashboard: React.FC<DashboardProps> = ({ round, mantraId, onSelectMantra, isOpen, onClose }) => {
     const [heatmapData, setHeatmapData] = useState<DayStat[]>([]);
     const [streak, setStreak] = useState(0);
 
     useEffect(() => {
         if (!isOpen) return;
 
-        // Fetch Stats from Dexie
         const fetchStats = async () => {
-            // 1. Get all milestones or aggregation of session logs
-            // Simplified: just check sessions for last 7 days
             const now = new Date();
             const stats: Record<string, number> = {};
 
@@ -38,7 +38,6 @@ const Dashboard: React.FC<DashboardProps> = ({ round, isOpen, onClose }) => {
                 stats[key] = 0;
             }
 
-            // Query DB (naive scan for MVP, optimize with indexes later)
             const recentSessions = await db.sessions
                 .where('timestamp')
                 .above(Date.now() - 14 * 24 * 60 * 60 * 1000)
@@ -51,10 +50,7 @@ const Dashboard: React.FC<DashboardProps> = ({ round, isOpen, onClose }) => {
 
             const data = Object.entries(stats).map(([date, count]) => ({ date, count }));
             setHeatmapData(data);
-
-            // Calculate Streak (Simplified: consecutive days with > 0)
-            // ... logic
-            setStreak(data.filter(d => d.count > 0).length); // Just active days for now
+            setStreak(data.filter(d => d.count > 0).length); // consecutive active days, simplified
         };
         fetchStats();
     }, [isOpen]);
@@ -66,22 +62,50 @@ const Dashboard: React.FC<DashboardProps> = ({ round, isOpen, onClose }) => {
                     initial={{ opacity: 0, y: 50 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: 50 }}
-                    className="absolute bottom-0 left-0 right-0 h-[60vh] bg-black/80 backdrop-blur-xl border-t border-white/10 rounded-t-3xl p-6 z-50 text-white"
+                    className="absolute bottom-0 left-0 right-0 h-[75vh] overflow-y-auto bg-black/80 backdrop-blur-xl border-t border-white/10 rounded-t-3xl p-6 z-50 text-white"
                 >
                     {/* Header */}
                     <div className="flex justify-between items-center mb-8">
                         <div className="flex items-center gap-3">
                             <div className="p-2 bg-neon-gold/20 rounded-lg">
-                                <Activity className="text-neon-gold" size={20} />
+                                <Flower2 className="text-neon-gold" size={20} />
                             </div>
                             <div>
-                                <h2 className="font-bold text-lg tracking-wide">Spiritual Energy</h2>
-                                <p className="text-xs text-white/40 uppercase tracking-widest">Analytics</p>
+                                <h2 className="font-bold text-lg tracking-wide">Your Practice</h2>
+                                <p className="text-xs text-white/40 uppercase tracking-widest">Nitya</p>
                             </div>
                         </div>
                         <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full">
                             <X size={20} className="text-white/60" />
                         </button>
+                    </div>
+
+                    {/* Mantra selection */}
+                    <div className="mb-6">
+                        <div className="text-xs uppercase tracking-[0.2em] text-white/40 mb-3">Choose your Naam</div>
+                        <div className="flex flex-col gap-3">
+                            {Object.values(MANTRAS).map((mantra) => {
+                                const active = mantra.id === mantraId;
+                                return (
+                                    <button
+                                        key={mantra.id}
+                                        onClick={() => onSelectMantra(mantra.id)}
+                                        className={`text-left p-4 rounded-2xl border transition-colors duration-300 ${active
+                                                ? 'bg-neon-gold/10 border-neon-gold/40'
+                                                : 'bg-white/5 border-white/10 hover:bg-white/10'
+                                            }`}
+                                    >
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <div className={`font-semibold ${active ? 'text-neon-gold' : 'text-white'}`}>{mantra.name}</div>
+                                                <div className="text-xs text-white/40 mt-0.5">{mantra.subtitle}</div>
+                                            </div>
+                                            {active && <Check size={18} className="text-neon-gold shrink-0" />}
+                                        </div>
+                                    </button>
+                                );
+                            })}
+                        </div>
                     </div>
 
                     {/* Streak + Round Cards */}

@@ -4,11 +4,13 @@ import React, { useRef, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Settings, Mic, Waves, MicOff } from 'lucide-react';
 import type { VoiceStatus } from '@/hooks/useMantraEngine';
+import type { MantraDef } from '@/lib/mantras';
 
 interface GlassOverlayProps {
     count: number;
     round: number;
     lifetimeCount: number;
+    mantra: MantraDef;
     isListening: boolean;
     voiceStatus: VoiceStatus;
     onToggleListen: () => void;
@@ -80,14 +82,14 @@ const MagneticButton = ({ children, onClick, active }: { children: React.ReactNo
 };
 
 const VOICE_STATUS_LABEL: Record<VoiceStatus, string> = {
-    idle: 'READY',
-    listening: 'AUDIO_ACTIVE',
-    unsupported: 'VOICE UNAVAILABLE — DRAG TO COUNT',
-    denied: 'MIC BLOCKED — DRAG TO COUNT',
-    error: 'VOICE ERROR — DRAG TO COUNT',
+    idle: 'PRESENT',
+    listening: 'LISTENING',
+    unsupported: 'VOICE UNAVAILABLE · TURN THE MALA',
+    denied: 'MIC BLOCKED · TURN THE MALA',
+    error: 'VOICE PAUSED · TURN THE MALA',
 };
 
-const GlassOverlay: React.FC<GlassOverlayProps> = ({ count, round, lifetimeCount, isListening, voiceStatus, onToggleListen, onOpenSettings }) => {
+const GlassOverlay: React.FC<GlassOverlayProps> = ({ count, round, lifetimeCount, mantra, isListening, voiceStatus, onToggleListen, onOpenSettings }) => {
 
     // Auto-hide UI
     const [idle, setIdle] = useState(false);
@@ -126,7 +128,7 @@ const GlassOverlay: React.FC<GlassOverlayProps> = ({ count, round, lifetimeCount
                 </div>
 
                 <div className="text-right">
-                    <div className="text-[9px] sm:text-[10px] uppercase tracking-[0.2em] text-white/40 mb-1">CYCLE</div>
+                    <div className="text-[9px] sm:text-[10px] uppercase tracking-[0.2em] text-white/40 mb-1">Round</div>
                     <div className="font-mono text-white text-base sm:text-lg tracking-widest">
                         {round.toString().padStart(2, '0')}
                     </div>
@@ -135,12 +137,23 @@ const GlassOverlay: React.FC<GlassOverlayProps> = ({ count, round, lifetimeCount
 
             {/* Center: The Odometer */}
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none">
-                <Odometer value={count} />
+                {/* A dark vignette behind the readout, so it stays legible over
+                    the glow regardless of which mantra's colors are active. */}
+                <div className="absolute inset-0 -m-16 sm:-m-24 rounded-full bg-[radial-gradient(ellipse_at_center,rgba(0,0,0,0.55)_0%,rgba(0,0,0,0.25)_55%,transparent_75%)]" />
                 <motion.div
                     animate={{ opacity: idle ? 0 : 1 }}
-                    className="text-[8px] sm:text-[10px] uppercase tracking-[0.4em] text-white/40 mt-4 sm:mt-6"
+                    className="relative text-[9px] sm:text-[11px] uppercase tracking-[0.3em] text-neon-gold mb-4 drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)]"
                 >
-                    Repetitions
+                    {mantra.name}
+                </motion.div>
+                <div className="relative">
+                    <Odometer value={count} />
+                </div>
+                <motion.div
+                    animate={{ opacity: idle ? 0 : 1 }}
+                    className="relative text-[8px] sm:text-[10px] uppercase tracking-[0.4em] text-white/70 mt-4 sm:mt-6 drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)]"
+                >
+                    Naam Count
                 </motion.div>
                 <AnimatePresence>
                     {showHint && (
@@ -149,9 +162,9 @@ const GlassOverlay: React.FC<GlassOverlayProps> = ({ count, round, lifetimeCount
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
                             transition={{ delay: 0.6, duration: 0.8 }}
-                            className="text-[9px] sm:text-[11px] tracking-[0.15em] text-white/50 mt-8"
+                            className="relative text-[9px] sm:text-[11px] tracking-[0.15em] text-white/70 mt-8 drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)]"
                         >
-                            Drag or tap the mala to begin
+                            Turn a bead to begin your japa
                         </motion.div>
                     )}
                 </AnimatePresence>
