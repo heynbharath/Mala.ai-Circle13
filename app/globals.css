@@ -1,12 +1,12 @@
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
 @import "tailwindcss";
 
 :root {
-  --background: #0a0603;
-  --foreground: #f0e6d8;
+  --background: #070402;
+  --foreground: #f7eedf;
   --neon-gold: #ffd700;
-  --neon-gold-glow: rgba(255, 190, 80, 0.5);
-  --deep-black: #0a0603;
-  --glass-overlay: rgba(255, 220, 180, 0.05);
+  --neon-gold-glow: rgba(255, 195, 75, 0.55);
+  --deep-black: #070402;
 }
 
 @theme inline {
@@ -14,24 +14,34 @@
   --color-foreground: var(--foreground);
   --color-neon-gold: var(--neon-gold);
   --color-deep-black: var(--deep-black);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
 }
 
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
   overflow: hidden;
-  /* Prevent scroll on mobile */
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+}
+
+.font-serif {
+  font-family: 'Cinzel', serif;
 }
 
 @layer utilities {
   .text-glow {
-    text-shadow: 0 0 10px var(--neon-gold-glow), 0 0 20px var(--neon-gold-glow);
+    text-shadow: 0 0 12px var(--neon-gold-glow), 0 0 24px rgba(255, 175, 45, 0.35);
   }
 
   .box-glow {
-    box-shadow: 0 0 15px var(--neon-gold-glow);
+    box-shadow: 0 0 20px var(--neon-gold-glow);
+  }
+
+  .gold-shimmer {
+    background: linear-gradient(135deg, #fff2cc 0%, #ffd700 50%, #d49520 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
   }
 }
