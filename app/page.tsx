@@ -39,6 +39,28 @@ export default function Home() {
     }
   }, [mantra.recommendedBead]);
 
+  // Strict Mobile Pinch & Multi-Touch Prevention
+  useEffect(() => {
+    const preventMultiTouch = (e: TouchEvent) => {
+      if (e.touches.length > 1) {
+        e.preventDefault();
+      }
+    };
+    const preventGesture = (e: Event) => {
+      e.preventDefault();
+    };
+
+    window.addEventListener('touchmove', preventMultiTouch, { passive: false });
+    window.addEventListener('gesturestart', preventGesture);
+    window.addEventListener('gesturechange', preventGesture);
+
+    return () => {
+      window.removeEventListener('touchmove', preventMultiTouch);
+      window.removeEventListener('gesturestart', preventGesture);
+      window.removeEventListener('gesturechange', preventGesture);
+    };
+  }, []);
+
   const handleSelectMaterial = useCallback((mat: BeadMaterialType) => {
     setActiveMaterial(mat);
     localStorage.setItem('nitya_material', mat);
@@ -67,10 +89,10 @@ export default function Home() {
   const intensity = (count % mantra.roundLength) / mantra.roundLength;
 
   return (
-    <main className="relative w-full h-screen bg-[#070402] overflow-hidden select-none">
+    <main className="relative w-full h-screen bg-[#070402] overflow-hidden select-none touch-none">
 
       {/* 3D Sacred Scene Layer */}
-      <div className="absolute inset-0 z-0 cursor-grab active:cursor-grabbing">
+      <div className="absolute inset-0 z-0 touch-none cursor-grab active:cursor-grabbing">
         <Canvas
           camera={{ position: [0, 0, 14.5], fov: 45 }}
           gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}

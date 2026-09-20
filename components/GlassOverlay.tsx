@@ -38,11 +38,11 @@ interface GlassOverlayProps {
 }
 
 const VOICE_STATUS_LABEL: Record<VoiceStatus, string> = {
-    idle: 'CHANT OR TURN BEAD',
+    idle: 'CHANT OR ROLL BEAD',
     listening: 'LISTENING TO MAHA MANTRA...',
-    unsupported: 'VOICE UNAVAILABLE · TURN THE MALA',
-    denied: 'MIC BLOCKED · TURN THE MALA',
-    error: 'VOICE PAUSED · TURN THE MALA',
+    unsupported: 'VOICE UNAVAILABLE · ROLL A BEAD',
+    denied: 'MIC BLOCKED · ROLL A BEAD',
+    error: 'VOICE PAUSED · ROLL A BEAD',
 };
 
 const GlassOverlay: React.FC<GlassOverlayProps> = ({
