@@ -2,12 +2,15 @@
 
 import React, { useRef, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Settings, Mic, Waves } from 'lucide-react';
+import { Settings, Mic, Waves, MicOff } from 'lucide-react';
+import type { VoiceStatus } from '@/hooks/useMantraEngine';
 
 interface GlassOverlayProps {
     count: number;
     round: number;
+    lifetimeCount: number;
     isListening: boolean;
+    voiceStatus: VoiceStatus;
     onToggleListen: () => void;
     onOpenSettings: () => void;
 }
@@ -76,10 +79,20 @@ const MagneticButton = ({ children, onClick, active }: { children: React.ReactNo
     );
 };
 
-const GlassOverlay: React.FC<GlassOverlayProps> = ({ count, round, isListening, onToggleListen, onOpenSettings }) => {
+const VOICE_STATUS_LABEL: Record<VoiceStatus, string> = {
+    idle: 'READY',
+    listening: 'AUDIO_ACTIVE',
+    unsupported: 'VOICE UNAVAILABLE — DRAG TO COUNT',
+    denied: 'MIC BLOCKED — DRAG TO COUNT',
+    error: 'VOICE ERROR — DRAG TO COUNT',
+};
 
-    // Auto-hide UI 
+const GlassOverlay: React.FC<GlassOverlayProps> = ({ count, round, lifetimeCount, isListening, voiceStatus, onToggleListen, onOpenSettings }) => {
+
+    // Auto-hide UI
     const [idle, setIdle] = useState(false);
+    const showHint = lifetimeCount === 0;
+
     useEffect(() => {
         let timeout: NodeJS.Timeout;
         const resetIdle = () => {
@@ -106,9 +119,9 @@ const GlassOverlay: React.FC<GlassOverlayProps> = ({ count, round, isListening, 
                 className="flex justify-between items-start pointer-events-auto"
             >
                 <div className="flex items-center gap-2 sm:gap-3">
-                    <div className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full transition-colors duration-300 ${isListening ? 'bg-red-500 animate-pulse' : 'bg-green-500'}`}></div>
+                    <div className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full transition-colors duration-300 ${isListening ? 'bg-red-500 animate-pulse' : voiceStatus === 'idle' ? 'bg-green-500' : 'bg-amber-500'}`}></div>
                     <span className="text-[9px] sm:text-[10px] uppercase tracking-[0.2em] text-white/60 font-mono">
-                        {isListening ? 'AUDIO_ACTIVE' : 'READY'}
+                        {VOICE_STATUS_LABEL[voiceStatus]}
                     </span>
                 </div>
 
@@ -129,6 +142,19 @@ const GlassOverlay: React.FC<GlassOverlayProps> = ({ count, round, isListening, 
                 >
                     Repetitions
                 </motion.div>
+                <AnimatePresence>
+                    {showHint && (
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ delay: 0.6, duration: 0.8 }}
+                            className="text-[9px] sm:text-[11px] tracking-[0.15em] text-white/50 mt-8"
+                        >
+                            Drag or tap the mala to begin
+                        </motion.div>
+                    )}
+                </AnimatePresence>
             </div>
 
             {/* Bottom Controls */}
@@ -144,6 +170,8 @@ const GlassOverlay: React.FC<GlassOverlayProps> = ({ count, round, isListening, 
                 <MagneticButton onClick={onToggleListen} active={isListening}>
                     {isListening ? (
                         <Waves size={20} strokeWidth={1.5} />
+                    ) : voiceStatus === 'unsupported' || voiceStatus === 'denied' ? (
+                        <MicOff size={20} strokeWidth={1.5} />
                     ) : (
                         <Mic size={20} strokeWidth={1.5} />
                     )}
@@ -151,7 +179,7 @@ const GlassOverlay: React.FC<GlassOverlayProps> = ({ count, round, isListening, 
             </motion.footer>
 
             {/* Cinematic Grain */}
-            <div className="absolute inset-0 pointer-events-none opacity-[0.03] bg-[url('https://grainy-gradients.vercel.app/noise.svg')] mix-blend-overlay"></div>
+            <div className="absolute inset-0 pointer-events-none opacity-[0.03] bg-[url('/noise.svg')] mix-blend-overlay"></div>
         </div>
     );
 };

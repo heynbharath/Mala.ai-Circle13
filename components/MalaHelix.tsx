@@ -1,20 +1,24 @@
 "use client";
 
 import React, { useRef, useMemo, useEffect } from 'react';
-import { useFrame, useThree } from '@react-three/fiber';
+import { useFrame, useThree, type ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useSensoryFeedback } from '@/hooks/useSensoryFeedback';
 
 interface MalaHelixProps {
-    count: number;
+    onIncrement: () => void;
 }
 
 const BEAD_COUNT = 108;
+const BEAD_STEP = (Math.PI * 2) / BEAD_COUNT; // Angular distance = one counted "click"
+const TAP_ROTATION_EPSILON = BEAD_STEP * 0.4; // Below this, a gesture is a tap, not a drag
+const MAX_VELOCITY = 40; // rad/s — caps momentum so a fling can't spin into hundreds of counts
+const MIN_VELOCITY_DT = 1 / 120; // seconds — floors the timing sample so a burst of events can't fake huge velocity
 
-const MalaHelix: React.FC<MalaHelixProps> = ({ count }) => {
+const MalaHelix: React.FC<MalaHelixProps> = ({ onIncrement }) => {
     const meshRef = useRef<THREE.InstancedMesh>(null);
     const groupRef = useRef<THREE.Group>(null);
-    const { size, viewport } = useThree(); // Get viewport info for valid 1:1 mapping
+    const { size } = useThree();
 
     // Interaction State
     const rotation = useRef(0);
@@ -22,18 +26,18 @@ const MalaHelix: React.FC<MalaHelixProps> = ({ count }) => {
     const isDragging = useRef(false);
     const lastY = useRef(0);
     const lastTime = useRef(0);
+    const gestureDistance = useRef(0); // Total |rotation| moved during current drag
+    const distanceSinceLastCount = useRef(0); // Consumed in BEAD_STEP chunks -> onIncrement
 
     const { updateTexture } = useSensoryFeedback();
 
-    // Optimization: Re-use objects
     const dummy = useMemo(() => new THREE.Object3D(), []);
     const material = useMemo(() => new THREE.MeshStandardMaterial({
-        color: '#B0C4DE', // LightSteelBlue
-        roughness: 0.4,   // Rougher for better performance (less specular calc)
+        color: '#B0C4DE',
+        roughness: 0.4,
         metalness: 0.8,
     }), []);
 
-    // Setup Geometry
     useEffect(() => {
         if (!meshRef.current) return;
         for (let i = 0; i < BEAD_COUNT; i++) {
@@ -46,7 +50,6 @@ const MalaHelix: React.FC<MalaHelixProps> = ({ count }) => {
             const y = (i - BEAD_COUNT / 2) * heightFactor;
 
             dummy.position.set(x, y, z);
-            // Remove random rotation for performance/cleaner look
             dummy.scale.setScalar(0.25);
             dummy.updateMatrix();
             meshRef.current.setMatrixAt(i, dummy.matrix);
@@ -54,14 +57,24 @@ const MalaHelix: React.FC<MalaHelixProps> = ({ count }) => {
         meshRef.current.instanceMatrix.needsUpdate = true;
     }, [dummy]);
 
-    // Frame Loop: Momentum & Cleanup
-    useFrame((state, delta) => {
+    // Consume accumulated rotation distance in fixed steps, one onIncrement per step
+    const consumeDistance = (delta: number) => {
+        distanceSinceLastCount.current += Math.abs(delta);
+        while (distanceSinceLastCount.current >= BEAD_STEP) {
+            distanceSinceLastCount.current -= BEAD_STEP;
+            onIncrement();
+        }
+    };
+
+    // Momentum is purely visual (a satisfying spin-and-settle after release).
+    // Counting only ever happens from direct pointer motion or a tap — never
+    // from residual momentum — so the number on screen always matches an
+    // intentional gesture, with no drift after you let go.
+    useFrame((_state, delta) => {
         if (!groupRef.current) return;
 
-        // Apply Momentum if Not Dragging
         if (!isDragging.current) {
-            // Friction Logic
-            velocity.current *= 0.95; // Standard decay
+            velocity.current *= 0.95;
 
             if (Math.abs(velocity.current) > 0.001) {
                 rotation.current += velocity.current * delta;
@@ -69,55 +82,49 @@ const MalaHelix: React.FC<MalaHelixProps> = ({ count }) => {
             }
         }
 
-        // Apply Rotation
         groupRef.current.rotation.y = rotation.current;
     });
 
-    // 1:1 Interaction Handlers
-    const onPointerDown = (e: any) => {
+    const onPointerDown = (e: ThreeEvent<PointerEvent>) => {
         e.stopPropagation();
         isDragging.current = true;
-        lastY.current = e.clientY || e.touches?.[0]?.clientY;
+        gestureDistance.current = 0;
+        lastY.current = e.clientY;
         lastTime.current = performance.now();
-        velocity.current = 0; // Stop momentum instantly on touch
+        velocity.current = 0;
     };
 
-    const onPointerMove = (e: any) => {
+    const onPointerMove = (e: ThreeEvent<PointerEvent>) => {
         if (!isDragging.current) return;
 
-        // Calculate 1:1 Delta
-        const currentY = e.clientY || e.touches?.[0]?.clientY;
+        const currentY = e.clientY;
         const deltaPixel = currentY - lastY.current;
 
-        // Convert Pixel Delta to Rotation Dial Delta
-        // Factor needs to feel natural. 
-        // Approx: Screen Height = ~Math.PI * 2 rotation? 
-        // Let's try constant sensitivity based on viewport height.
         const sensitivity = 5.0 / size.height;
-
         const deltaRotation = deltaPixel * sensitivity;
 
         rotation.current += deltaRotation;
+        gestureDistance.current += Math.abs(deltaRotation);
+        consumeDistance(deltaRotation);
 
-        // Calculate instant velocity for "Fling"
         const now = performance.now();
-        const dt = (now - lastTime.current) / 1000;
-        if (dt > 0) {
-            velocity.current = deltaRotation / dt;
-        }
+        const dt = Math.max((now - lastTime.current) / 1000, MIN_VELOCITY_DT);
+        velocity.current = THREE.MathUtils.clamp(deltaRotation / dt, -MAX_VELOCITY, MAX_VELOCITY);
 
         lastY.current = currentY;
         lastTime.current = now;
 
-        // Trigger Haptics directly on drag
         updateTexture(rotation.current, velocity.current);
     };
 
     const onPointerUp = () => {
+        if (isDragging.current && gestureDistance.current < TAP_ROTATION_EPSILON) {
+            // Treated as a tap: count one bead directly.
+            onIncrement();
+        }
         isDragging.current = false;
     };
 
-    // Global Listeners for safety
     useEffect(() => {
         const handleUp = () => { isDragging.current = false; };
         window.addEventListener('mouseup', handleUp);
@@ -129,19 +136,26 @@ const MalaHelix: React.FC<MalaHelixProps> = ({ count }) => {
     }, []);
 
     return (
-        <group
-            ref={groupRef}
-            // Native Event Handlers on mesh for better perf than R3F events sometimes?
-            // Using R3F events is fine if we stopPropagation
-            onPointerDown={onPointerDown}
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
-            onPointerLeave={onPointerUp}
-        >
-            <instancedMesh ref={meshRef} args={[undefined, undefined, BEAD_COUNT]} material={material}>
-                <sphereGeometry args={[1, 16, 16]} /> {/* Low Poly Reps */}
-            </instancedMesh>
-        </group>
+        <>
+            {/* Full-viewport invisible hit surface so a tap/drag anywhere counts,
+                not just precise contact with the thin bead ring. */}
+            <mesh
+                position={[0, 0, -6]}
+                onPointerDown={onPointerDown}
+                onPointerMove={onPointerMove}
+                onPointerUp={onPointerUp}
+                onPointerLeave={onPointerUp}
+            >
+                <planeGeometry args={[200, 200]} />
+                <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+            </mesh>
+
+            <group ref={groupRef}>
+                <instancedMesh ref={meshRef} args={[undefined, undefined, BEAD_COUNT]} material={material}>
+                    <sphereGeometry args={[1, 16, 16]} />
+                </instancedMesh>
+            </group>
+        </>
     );
 };
 

@@ -28,11 +28,10 @@ export const cleanBufferAfterMatch = (transcript: string): string => {
     // Determine the last match index
     // RegExp.exec is stateful if global, so allow fresh check
     const regex = new RegExp(MANTRA_REGEX.source, "gi");
-    let match;
     let lastIndex = 0;
 
     // Find last full match
-    while ((match = regex.exec(transcript)) !== null) {
+    while (regex.exec(transcript) !== null) {
         lastIndex = regex.lastIndex;
     }
 

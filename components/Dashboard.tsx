@@ -84,14 +84,22 @@ const Dashboard: React.FC<DashboardProps> = ({ round, isOpen, onClose }) => {
                         </button>
                     </div>
 
-                    {/* Streak Card */}
-                    <div className="bg-gradient-to-br from-neon-gold/10 to-transparent p-6 rounded-2xl border border-neon-gold/20 mb-6 relative overflow-hidden">
-                        <div className="absolute top-0 right-0 p-4 opacity-20">
-                            <Flame size={80} />
+                    {/* Streak + Round Cards */}
+                    <div className="grid grid-cols-2 gap-4 mb-6">
+                        <div className="bg-gradient-to-br from-neon-gold/10 to-transparent p-6 rounded-2xl border border-neon-gold/20 relative overflow-hidden">
+                            <div className="absolute top-0 right-0 p-4 opacity-20">
+                                <Flame size={80} />
+                            </div>
+                            <div className="relative z-10">
+                                <div className="text-4xl font-bold font-mono text-neon-gold mb-1">{streak}</div>
+                                <div className="text-xs uppercase tracking-[0.2em] text-white/50">Active Streak</div>
+                            </div>
                         </div>
-                        <div className="relative z-10">
-                            <div className="text-4xl font-bold font-mono text-neon-gold mb-1">{streak}</div>
-                            <div className="text-xs uppercase tracking-[0.2em] text-white/50">Active Streak</div>
+                        <div className="bg-white/5 p-6 rounded-2xl border border-white/10 relative overflow-hidden">
+                            <div className="relative z-10">
+                                <div className="text-4xl font-bold font-mono text-white mb-1">{round}</div>
+                                <div className="text-xs uppercase tracking-[0.2em] text-white/50">Total Rounds</div>
+                            </div>
                         </div>
                     </div>
 

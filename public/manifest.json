@@ -1,20 +1,17 @@
 {
-    "name": "Nitya - Circle13",
+    "name": "Nitya — Digital Japa Mala",
     "short_name": "Nitya",
+    "description": "A living digital mala for mantra meditation. Count with a tap, a drag, or your voice.",
     "start_url": "/",
     "display": "standalone",
     "background_color": "#050505",
     "theme_color": "#050505",
     "icons": [
         {
-            "src": "/circle13-icon.png",
-            "sizes": "192x192",
-            "type": "image/png"
-        },
-        {
-            "src": "/circle13-icon.png",
-            "sizes": "512x512",
-            "type": "image/png"
+            "src": "/icon.svg",
+            "sizes": "any",
+            "type": "image/svg+xml",
+            "purpose": "any"
         }
     ]
 }
